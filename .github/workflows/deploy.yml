@@ -28,6 +28,7 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
+          file: Dockerfile.server
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
