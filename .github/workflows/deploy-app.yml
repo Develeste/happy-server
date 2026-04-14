@@ -1,0 +1,58 @@
+name: Build and Deploy App
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-app-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ${{ secrets.OCI_REGION }}.ocir.io
+  IMAGE_NAME: axm3wnkwwztq/happy-app
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.OCI_USERNAME }}
+          password: ${{ secrets.OCI_AUTH_TOKEN }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.app
+          push: true
+          build-args: |
+            EXPO_PUBLIC_HAPPY_SERVER_URL=https://happy-server.develeste.com
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+  update-manifest:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Develeste/oci-cel-k3s-gitops
+          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
+
+      - name: Update image tag
+        run: |
+          cd projects/happy-app/overlays/prod
+          sed -i "s|newTag:.*|newTag: ${{ github.sha }}|" kustomization.yaml
+          cd ../../../..
+
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .
+          git commit -m "Update happy-app prod image to ${{ github.sha }}"
+          git push
